@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Irritated Text</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+        #text {
+            position: absolute;
+            font-size: 2rem;
+            font-family: Arial, sans-serif;
+            color: #fff;
+            pointer-events: none; 
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none; 
+        }
+        #poetry {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            font-size: 1rem;
+            font-family: Arial, sans-serif;
+            color: #fff;
+            max-width: 300px;
+            overflow: hidden;
+        }
+        #infoButton {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 10px;
+            font-size: 1rem;
+            font-family: Arial, sans-serif;
+            background-color: #444;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="backgroundCanvas"></canvas>
+    <canvas id="particleCanvas"></canvas>
+    <div id="text">Don't drag!</div>
+    <div id="poetry"></div>
+    <button id="infoButton">apaan sih?</button>
+
+    <script>
+        const textElement = document.getElementById('text');
+        const particleCanvas = document.getElementById('particleCanvas');
+        const backgroundCanvas = document.getElementById('backgroundCanvas');
+        const poetryElement = document.getElementById('poetry');
+        const ctx = particleCanvas.getContext('2d');
+        const bgCtx = backgroundCanvas.getContext('2d');
+        const initialMoveDistance = 5;
+        let velocityX = initialMoveDistance;
+        let velocityY = initialMoveDistance;
+        let textChanged = false;
+        let slowdownInterval = null;
+        let lastTouchTime = 0;
+        let particles = [];
+        let lines = [];
+        let canvasAlpha = 1; 
+        let touchTimer = null; 
+
+        const objects = ['otak', 'dada', 'hati', 'kepala', 'puisi', 'kata', 'aku', 'kau', 'lidah', 'mulut', 'mata'];
+        const moods = ['marah', 'sebal', 'pedas', 'sinis', 'kecewa', 'gerah', 'penat', 'kesal', 'sengit'];
+        const textures = ['keras', 'tajam', 'angkuh', 'kasar', 'cadas', 'terjal', 'bengis', 'licik', 'panas', 'didih'];
+        const conditions = ['terbakar', 'terpanggang', 'membara', 'terpecah', 'berperang', 'sengkarut', 'meledak'];
+
+        function generateUniquePoetry() {
+            const getRandomUniqueItem = (array, usedItems) => {
+                let item;
+                do {
+                    item = array[Math.floor(Math.random() * array.length)];
+                } while (usedItems.includes(item));
+                usedItems.push(item);
+                return item;
+            };
+
+            let usedItems = [];
+
+            const mood1 = getRandomUniqueItem(moods, usedItems);
+            const mood2 = getRandomUniqueItem(moods.filter(mood => mood !== mood1), usedItems);
+            const condition1 = getRandomUniqueItem(conditions, usedItems);
+            const texture1 = getRandomUniqueItem(textures, usedItems);
+            const object = getRandomUniqueItem(objects, usedItems);
+            const condition2 = getRandomUniqueItem(conditions.filter(cond => cond !== condition1), usedItems);
+            const condition3 = getRandomUniqueItem(conditions.filter(cond => cond !== condition1 && cond !== condition2), usedItems);
+            const texture2 = getRandomUniqueItem(textures.filter(tex => tex !== texture1), usedItems);
+
+            return `${mood1} ${condition1}, <br>\n${texture1} ${object} ${condition2}!<br>\n${mood2} ${condition3} ${texture2}.`;
+        }
+
+        function updatePoetry() {
+            poetryElement.innerHTML = generateUniquePoetry();
+        }
+
+        function startPoetryGeneration() {
+            updatePoetry();
+            setInterval(updatePoetry, 3000);
+        }
+
+        particleCanvas.width = backgroundCanvas.width = window.innerWidth;
+        particleCanvas.height = backgroundCanvas.height = window.innerHeight;
+
+        function centerText() {
+            const x = (window.innerWidth - textElement.offsetWidth) / 2;
+            const y = (window.innerHeight - textElement.offsetHeight) / 2;
+            textElement.style.left = `${x}px`;
+            textElement.style.top = `${y}px`;
+        }
+
+        function updateTextPosition(event) {
+            event.preventDefault();
+            lastTouchTime = Date.now();
+
+            if (touchTimer) {
+                clearTimeout(touchTimer);
+                touchTimer = null;
+            }
+
+            if (!textChanged) {
+                textElement.textContent = "I hate you!";
+                textChanged = true;
+            }
+
+            const touch = event.touches[0];
+            const touchX = touch.clientX;
+            const touchY = touch.clientY;
+
+            const textRect = textElement.getBoundingClientRect();
+            const textX = textRect.left + window.scrollX + textRect.width / 2;
+            const textY = textRect.top + window.scrollY + textRect.height / 2;
+
+            const deltaX = touchX - textX;
+            const deltaY = touchY - textY;
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+            const newX = touchX + (deltaX / distance) * 100;
+            const newY = touchY + (deltaY / distance) * 100;
+
+            textElement.style.left = `${newX}px`;
+            textElement.style.top = `${newY}px`;
+
+            velocityX = initialMoveDistance;
+            velocityY = initialMoveDistance;
+
+            if (slowdownInterval) {
+                clearInterval(slowdownInterval);
+                slowdownInterval = null;
+            }
+
+            createParticles(newX + textRect.width / 2, newY + textRect.height / 2);
+
+            if (touchTimer) {
+                clearTimeout(touchTimer);
+            }
+            touchTimer = setTimeout(() => {
+                startFadeOut();
+            }, 3000);
+        }
+
+        function resetText() {
+            textElement.textContent = "Don't drag!";
+            textChanged = false;
+            centerText();
+            canvasAlpha = 1; 
+            lines = []; 
+            createBackgroundLines(); 
+
+            if (touchTimer) {
+                clearTimeout(touchTimer);
+                touchTimer = null;
+            }
+            if (fadeOutInterval) {
+                clearInterval(fadeOutInterval);
+                fadeOutInterval = null;
+                canvasAlpha = 1; 
+            }
+        }
+
+        function createParticles(x, y) {
+            for (let i = 0; i < 10; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    alpha: 1,
+                    size: Math.random() * 5 + 2,
+                    velocityX: (Math.random() - 0.5) * 4,
+                    velocityY: (Math.random() - 0.5) * 4,
+                    color: `rgba(${Math.floor(255)}, ${Math.floor(100 + Math.random() * 155)}, 0, 1)`,
+                });
+            }
+        }
+
+        function updateParticles() {
+            ctx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                p.x += p.velocityX;
+                p.y += p.velocityY;
+                p.alpha -= 0.03;
+
+                if (p.alpha <= 0) {
+                    particles.splice(i, 1);
+                    i--;
+                    continue;
+                }
+
+                ctx.globalAlpha = p.alpha;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.fill();
+            }
+
+            ctx.globalAlpha = 1;
+        }
+
+        function animateText() {
+            const rect = textElement.getBoundingClientRect();
+
+            if (rect.left + velocityX < 0 || rect.right + velocityX > window.innerWidth) {
+                velocityX = -velocityX;
+            }
+            if (rect.top + velocityY < 0 || rect.bottom + velocityY > window.innerHeight) {
+                velocityY = -velocityY;
+            }
+
+            textElement.style.left = `${rect.left + velocityX}px`;
+            textElement.style.top = `${rect.top + velocityY}px`;
+
+            updateParticles();
+            updateBackground(); 
+
+            if (Date.now() - lastTouchTime > 3000) {
+                if (!slowdownInterval) {
+                    slowdownInterval = setInterval(() => {
+                        velocityX *= 0.95;
+                        velocityY *= 0.95;
+
+                        if (Math.abs(velocityX) < 0.1 && Math.abs(velocityY) < 0.1) {
+                            velocityX = 0;
+                            velocityY = 0;
+                            clearInterval(slowdownInterval);
+                            slowdownInterval = null;
+                            startFadeOut();
+                        }
+                    }, 50);
+                }
+            }
+
+            requestAnimationFrame(animateText);
+        }
+
+        function startFadeOut() {
+            fadeOutInterval = setInterval(() => {
+                canvasAlpha -= 0.02;
+
+                if (canvasAlpha <= 0) {
+                    clearInterval(fadeOutInterval);
+                    fadeOutInterval = null;
+                    resetText();
+                }
+            }, 50);
+        }
+
+        function updateBackground() {
+            bgCtx.clearRect(0, 0, backgroundCanvas.width, backgroundCanvas.height);
+
+            bgCtx.globalAlpha = canvasAlpha;
+
+            bgCtx.beginPath();
+            bgCtx.lineWidth = 1;
+            bgCtx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+
+            lines.forEach(line => {
+                bgCtx.moveTo(line.x1, line.y1);
+                bgCtx.lineTo(line.x2, line.y2);
+            });
+
+            bgCtx.stroke();
+            bgCtx.globalAlpha = 1;
+        }
+
+        function createBackgroundLines() {
+            lines = [];
+            const numLines = 20;
+
+            for (let i = 0; i < numLines; i++) {
+                lines.push({
+                    x1: Math.random() * backgroundCanvas.width,
+                    y1: Math.random() * backgroundCanvas.height,
+                    x2: Math.random() * backgroundCanvas.width,
+                    y2: Math.random() * backgroundCanvas.height,
+                });
+            }
+        }
+
+        function resizeCanvas() {
+            particleCanvas.width = backgroundCanvas.width = window.innerWidth;
+            particleCanvas.height = backgroundCanvas.height = window.innerHeight;
+            centerText();
+            createBackgroundLines();
+        }
+
+        function showInfo() {
+            alert("telah ditiupkan ruh ke dalamnya, maka bertingkahlah ia");
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('touchmove', updateTextPosition);
+        window.addEventListener('touchend', () => {
+            lastTouchTime = Date.now();
+            if (!slowdownInterval) {
+                startFadeOut();
+            }
+        });
+
+        document.getElementById('infoButton').addEventListener('click', showInfo);
+
+        resizeCanvas();
+        centerText();
+        createBackgroundLines();
+        animateText();
+        startPoetryGeneration();
+    </script>
+</body>
+</html>
